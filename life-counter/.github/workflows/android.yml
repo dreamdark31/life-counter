@@ -1,0 +1,30 @@
+name: Build Android APK
+on:
+  push:
+    paths: ["android/**", ".github/workflows/android.yml"]
+    tags: ["v*"]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: android
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: chmod +x gradlew && ./gradlew assembleDebug
+      - run: cp app/build/outputs/apk/debug/app-debug.apk LifeCounter.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LifeCounter-apk
+          path: android/LifeCounter.apk
+      # A pushed tag like v1.5 publishes a release with the APK attached, for people to download.
+      - if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: android/LifeCounter.apk
+          generate_release_notes: true

@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<style>
+html{box-sizing:border-box;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px);-webkit-touch-callout:none;-webkit-text-size-adjust:100%}
+body{margin:0;font-size:14px}
+[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<title>Tabletop Life Counter</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Big+Shoulders+Display:wght@600;800&family=Figtree:wght@500;700&display=swap">
+<style>
+/* Layout: the phone lies flat on the table; each player owns a solid block of colour turned to face their seat. Life fills the block; extra counters stack down its right side; a tray pulled up from the block's bottom edge adds them. Single dark look by choice (it sits on a dim game table). */
+:root{
+  color-scheme:dark;
+  --ground:#0c0e13; --sheet:#171a22; --line:#2a2f3c; --text:#eceef4; --muted:#9299ab; --accent:#f0b429;
+  --num:"Big Shoulders Display","Arial Narrow",Impact,sans-serif;
+  --ui:"Figtree",system-ui,"Segoe UI",Roboto,sans-serif;
+}
+html,body{height:100%}
+body{background:var(--ground);color:var(--text);font-family:var(--ui);box-sizing:border-box;padding:8px;overflow:hidden;
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent;touch-action:manipulation}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+
+#board{position:relative;height:100%;display:grid;gap:6px;grid-auto-rows:minmax(0,1fr)}
+.cell{position:relative;overflow:hidden;border-radius:14px;background:var(--pc);min-width:0}
+.cell.span{grid-column:1/-1}
+.panel{position:absolute;left:50%;top:50%;container-type:size;color:var(--ink);display:flex;flex-direction:column;
+  padding:8px 10px;box-sizing:border-box;gap:4px}
+.cell.out{filter:saturate(.25) brightness(.55)}
+.cell.pick{animation:pick .5s ease-in-out 5}
+@keyframes pick{50%{filter:brightness(1.5)}}
+
+.top{position:relative;flex:none;height:22px;margin:-8px -10px 0}
+.top .grab{margin:0;width:100%;height:100%}
+/* the round menu button can sit over the middle of a tile's top edge, so the top handle shows as two bars either side of it */
+.top .grab{justify-content:space-around}
+.top .grab::after{content:"";width:46px;height:4px;border-radius:2px;background:var(--ink);opacity:.45}
+.top .tag{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-weight:700;font-size:12px;letter-spacing:.06em;text-transform:uppercase;pointer-events:none}
+.name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+.tag{flex:none;opacity:.85}
+.mid{flex:1;min-height:0;display:flex;gap:6px}
+
+/* life: always the biggest number in the block */
+.lifebox{position:relative;flex:1 1 0;min-width:28%;container-type:size;display:flex;align-items:center;justify-content:center}
+/* life: top half of the tile (from the player's side) adds, bottom half subtracts */
+.hit{position:absolute;left:0;right:0;height:50%;border-radius:10px}
+.hit.inc{top:0}.hit.dec{bottom:0}
+.hit:active,.ctr button:active{background:color-mix(in srgb,var(--ink) 14%,transparent)}
+.sign{position:absolute;top:50%;transform:translateY(-50%);font:600 clamp(16px,14cqh,40px)/1 var(--num);opacity:.45;pointer-events:none}
+.sign.l{left:4px}.sign.r{right:4px}
+.num{pointer-events:none;font:800 min(72cqh,44cqw)/.9 var(--num);font-variant-numeric:tabular-nums}
+.delta{position:absolute;top:0;left:50%;transform:translateX(-50%);font:600 clamp(14px,11cqh,30px)/1 var(--num);
+  pointer-events:none;opacity:0;transition:opacity .25s}
+.delta.on{opacity:.9}
+
+/* extra counters: stacked on the right, shrinking as more are added */
+.side{flex:none;min-height:0;display:flex;flex-direction:column;flex-wrap:wrap;justify-content:center;align-content:flex-end;gap:4px}
+.side:empty{display:none}
+.ctr{flex:0 1 46px;min-height:22px;width:clamp(80px,34cqw,124px);container-type:size;display:grid;grid-template-columns:26px minmax(0,1fr) 26px;
+  border-radius:9px;background:color-mix(in srgb,var(--ink) 16%,transparent);overflow:hidden}
+.ctr button{font:600 min(22px,70cqh)/1 var(--num);touch-action:manipulation}
+.cv{display:flex;align-items:center;justify-content:center;min-width:0;pointer-events:none;gap:5px}
+.cv svg{width:min(18px,52cqh);height:min(18px,52cqh);flex:none}
+svg{fill:currentColor}
+.chip svg{width:17px;height:17px;flex:none}
+.chip .dot{margin:0;width:11px;height:11px;flex:none}
+.cv .dot{margin:0;width:min(14px,44cqh);height:min(14px,44cqh);flex:none}
+
+/* start-up screens */
+#setup{position:fixed;inset:0;z-index:7;background:var(--ground);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;overflow-y:auto}
+.swrap{display:flex;flex-direction:column;gap:20px;align-items:center;width:min(100%,420px)}
+#setup h2{margin:0;font:800 32px/1 var(--num);letter-spacing:.03em;text-transform:uppercase;text-align:center;text-wrap:balance}
+#suNote{text-align:center}#suNote:empty{display:none}
+#suFoot{width:100%}#suFoot:empty{display:none}
+.nums{display:flex;flex-wrap:wrap;justify-content:center;gap:12px}
+.nums .btn{flex:none;width:92px;height:92px;border-radius:16px;font:800 44px/1 var(--num);background:var(--sheet)}
+.lays{display:flex;flex-wrap:wrap;justify-content:center;gap:14px;width:100%}
+.lay{flex:1 1 140px;max-width:190px;display:flex;flex-direction:column;align-items:center;gap:12px;padding:16px 10px;border-radius:16px;
+  background:var(--sheet);border:1px solid var(--line);font-weight:700;font-size:14px;line-height:1.25;text-wrap:balance}
+.mini{display:grid;gap:3px;width:92px;height:156px}
+.mt{position:relative;border-radius:4px;min-width:0;min-height:0}
+.mt::after{content:"";position:absolute;background:var(--ground);opacity:.6;border-radius:2px}
+.mt[data-r="0"]::after{left:22%;right:22%;bottom:3px;height:4px}
+.mt[data-r="180"]::after{left:22%;right:22%;top:3px;height:4px}
+.mt[data-r="90"]::after{top:22%;bottom:22%;left:3px;width:4px}
+.mt[data-r="-90"]::after{top:22%;bottom:22%;right:3px;width:4px}
+
+/* finger chooser */
+#chooser{position:fixed;inset:0;z-index:6;background:var(--ground);touch-action:none;overflow:hidden}
+#chHint{position:absolute;z-index:1;left:16px;right:16px;top:50%;transform:translateY(-50%);text-align:center;font:800 28px/1.1 var(--num);
+  text-transform:uppercase;letter-spacing:.03em;color:var(--text);pointer-events:none;text-wrap:balance}
+#chClose{position:absolute;z-index:2;right:12px;top:calc(12px + env(safe-area-inset-top,0px));flex:none}
+.finger{position:absolute;width:104px;height:104px;margin:-52px 0 0 -52px;border-radius:50%;border:6px solid var(--fc);box-sizing:border-box;
+  pointer-events:none;transition:transform .25s,background .25s}
+.finger.arm{animation:arm 2.5s linear forwards}
+@keyframes arm{to{box-shadow:0 0 0 26px color-mix(in srgb,var(--fc) 35%,transparent)}}
+.finger.win{background:var(--fc);transform:scale(1.35);box-shadow:0 0 0 200vmax color-mix(in srgb,var(--fc) 30%,transparent)}
+@media (prefers-reduced-motion:reduce){.finger.arm{animation:none}.finger{transition:none}}
+.cl{max-width:100%;font-size:min(9px,24cqh);line-height:1;font-weight:700;letter-spacing:.06em;text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;opacity:.85}
+.cn{font:800 min(26px,58cqh)/1 var(--num);font-variant-numeric:tabular-nums}
+.dot{display:inline-block;width:.8em;height:.8em;border-radius:50%;border:1.5px solid currentColor;box-sizing:border-box;vertical-align:-.05em;margin-right:.3em}
+
+/* pull-up tray */
+.grab{flex:none;height:22px;margin:0 -10px -8px;display:flex;align-items:center;justify-content:center;touch-action:none}
+.grab::before{content:"";width:46px;height:4px;border-radius:2px;background:var(--ink);opacity:.45}
+.scrim{position:absolute;inset:0;z-index:1}
+.tray{position:absolute;left:0;right:0;bottom:0;z-index:2;display:flex;flex-direction:column;padding:0 10px 10px;max-height:100%;box-sizing:border-box;
+  background:color-mix(in srgb,var(--pc) 72%,var(--ground));transform:translateY(100%);transition:transform .18s ease-out}
+.tray.open{transform:none}
+.tray .grab{margin:0 -10px}
+.ptray{top:0;bottom:auto;transform:translateY(-100%);padding:10px 10px 0}
+.pals{display:flex;flex-wrap:wrap;justify-content:center;gap:8px}
+.tray .pc{width:30px;height:30px;border-color:var(--ink)}
+.tray .pc.sel{outline-color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;justify-content:center;gap:5px}
+.chip{display:inline-flex;align-items:center;gap:5px;min-width:34px;height:28px;padding:0 9px;justify-content:center;border-radius:15px;
+  background:color-mix(in srgb,var(--ink) 16%,transparent);font-weight:700;font-size:12px;white-space:nowrap;max-width:120px;overflow:hidden}
+.chip.on{background:var(--ink);color:var(--pc)}
+.chip.add{border:1.5px dashed var(--ink);background:none}
+
+#hub{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:46px;height:46px;border-radius:50%;
+  background:var(--ground);border:2px solid var(--line);color:var(--text);font-size:20px;line-height:1;z-index:2}
+
+#menu{position:fixed;inset:0;z-index:5;background:color-mix(in srgb,var(--ground) 70%,transparent);display:flex;align-items:center;justify-content:center;padding:16px;box-sizing:border-box;
+  -webkit-user-select:text;user-select:text}
+.sheet{background:var(--sheet);width:min(100%,460px);max-height:88%;overflow-y:auto;border-radius:18px;
+  padding:16px;box-shadow:0 20px 60px rgba(0,0,0,.5);box-sizing:border-box;display:flex;flex-direction:column;gap:18px}
+.sheet h2{margin:0;font:800 26px/1 var(--num);letter-spacing:.03em;text-transform:uppercase}
+.head{display:flex;justify-content:space-between;align-items:center}
+.sec{display:flex;flex-direction:column;gap:8px}
+.lbl{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.btn{min-height:42px;padding:0 14px;border-radius:10px;background:var(--ground);border:1px solid var(--line);font-weight:700;flex:1}
+.btn.on{background:var(--accent);border-color:var(--accent);color:var(--ground)}
+.btn.warn{border-color:var(--accent);color:var(--accent)}
+.note{font-size:13px;color:var(--muted);margin:0}
+.prow{display:flex;gap:8px;align-items:center}
+.pal{display:flex;flex-wrap:wrap;gap:10px;padding:2px 0 6px 50px}
+.pc{width:36px;height:36px;border-radius:50%;border:2px solid var(--line)}
+.pc.sel{outline:3px solid var(--text);outline-offset:2px}
+.pc:disabled{opacity:.18;cursor:default}
+.sw{width:42px;height:42px;border-radius:10px;flex:none;border:1px solid var(--line)}
+.prow input{flex:1;min-width:0;height:42px;border-radius:10px;border:1px solid var(--line);background:var(--ground);color:var(--text);font:inherit;padding:0 12px}
+#result{font:800 30px/1.1 var(--num);min-height:34px;text-align:center}
+#log{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:4px;font-size:14px;max-height:180px;overflow-y:auto;font-variant-numeric:tabular-nums}
+#log li{display:flex;justify-content:space-between;gap:12px;border-bottom:1px solid var(--line);padding:4px 0}
+#log time{color:var(--muted);flex:none}
+@media (prefers-reduced-motion:reduce){.cell.pick{animation:none;outline:4px solid var(--text);outline-offset:-4px}.delta,.tray{transition:none}}
+</style>
+
+<div id="board"><button id="hub" aria-label="Open menu">&#9776;</button></div>
+
+<div id="menu" hidden>
+  <div class="sheet" role="dialog" aria-label="Game menu">
+    <div class="head"><h2>Life Counter</h2><button class="btn" id="close" style="flex:none">Back to game</button></div>
+
+    <div class="sec"><span class="lbl">Players and seating</span><div class="seg"><button class="btn" id="setupBtn">Change players or seating</button></div>
+      <p class="note">Picking a new seating starts a new game.</p></div>
+    <div class="sec"><span class="lbl">Starting life</span><div class="seg" id="segL"></div>
+      <p class="note" id="lifeNote" hidden>Applies when you start a new game.</p></div>
+
+
+    <div class="sec"><span class="lbl">Coin and chooser</span>
+      <div class="seg"><button class="btn" data-roll="2">Coin</button><button class="btn" id="fingers">Finger chooser</button></div>
+      <div id="result" aria-live="polite"></div></div>
+
+    <div class="sec"><span class="lbl">History</span><ul id="log"></ul></div>
+
+    <div class="seg"><button class="btn warn" id="newgame">New game</button><button class="btn" id="fs">Full screen</button></div>
+  </div>
+</div>
+
+<div id="setup" hidden><div class="swrap"><h2 id="suH"></h2><div id="suBody"></div><p class="note" id="suNote"></p><div class="seg" id="suFoot"></div></div></div>
+
+<div id="chooser" hidden><button class="btn" id="chClose">Close</button><div id="chHint" aria-live="polite"></div></div>
+
+<script>
+const COLORS=[["#d9482b","#fff","Red"],["#2f6fd6","#fff","Blue"],["#2c9259","#fff","Green"],["#e3a824","#1a1405","Gold"],["#9450c8","#fff","Purple"],["#cfc8b6","#17150f","Bone"],["#1f8f9c","#fff","Teal"],["#d2457f","#fff","Pink"],["#8fbf2f","#141a05","Lime"],["#5b6477","#fff","Slate"]];
+/* players have no names; the log and labels refer to them by colour */
+const pname=i=>COLORS[S.players[i].color][2];
+/* seating layouts per player count. cell = [column, row, column span, row span, rotation];
+   rotation 0 = sits at the bottom edge, 180 = top edge, 90 = left side, -90 = right side */
+const LAYS={
+ 2:[{name:"Face to face",cols:1,rows:[1,1],cells:[[1,1,1,1,180],[1,2,1,1,0]]}],
+ 3:[{name:"One each side, one at the bottom",cols:2,rows:[1,1],cells:[[1,1,1,1,90],[2,1,1,1,-90],[1,2,2,1,0]]},
+    {name:"One at the top, one each side",cols:2,rows:[1,1],cells:[[1,1,2,1,180],[1,2,1,1,90],[2,2,1,1,-90]]}],
+ 4:[{name:"Two left, two right",cols:2,rows:[1,1],cells:[[1,1,1,1,90],[2,1,1,1,-90],[1,2,1,1,90],[2,2,1,1,-90]]},
+    {name:"One on every side",cols:2,rows:[1,1.3,1],cells:[[1,1,2,1,180],[1,2,1,1,90],[2,2,1,1,-90],[1,3,2,1,0]]}],
+ 5:[{name:"Two each side, one at the bottom",cols:2,rows:[1,1,1],cells:[[1,1,1,1,90],[2,1,1,1,-90],[1,2,1,1,90],[2,2,1,1,-90],[1,3,2,1,0]]},
+    {name:"One at the top, two each side",cols:2,rows:[1,1,1],cells:[[1,1,2,1,180],[1,2,1,1,90],[2,2,1,1,-90],[1,3,1,1,90],[2,3,1,1,-90]]}],
+ 6:[{name:"Three left, three right",cols:2,rows:[1,1,1],cells:[[1,1,1,1,90],[2,1,1,1,-90],[1,2,1,1,90],[2,2,1,1,-90],[1,3,1,1,90],[2,3,1,1,-90]]}]};
+const ICONS=[
+ ["skull","M12 2a8 8 0 00-8 8c0 3 1.5 5 3 6v4h10v-4c1.5-1 3-3 3-6a8 8 0 00-8-8zM9 9a2 2 0 110 4 2 2 0 010-4zm6 0a2 2 0 110 4 2 2 0 010-4z"],
+ ["drop","M12 2C8 8 5 11 5 15a7 7 0 0014 0c0-4-3-7-7-13z"],
+ ["bolt","M13 2L4 14h6l-1 8 9-12h-6z"],
+ ["star","M12 2l3 7 7 .5-5.5 5 2 7.5-6.5-4.2L5.5 22l2-7.5L2 9.5 9 9z"],
+ ["heart","M12 21C5 15 2 12 2 8a5 5 0 0110-1.5A5 5 0 0122 8c0 4-3 7-10 13z"],
+ ["shield","M12 2l8 3v6c0 5-3.5 9-8 11-4.5-2-8-6-8-11V5z"],
+ ["sword","M20 2h2v2L10 16l-2-2zM6 14l4 4-2 2-1-1-3 3-2-2 3-3-1-1z"],
+ ["crown","M3 19h18l1-12-5 4-5-8-5 8-5-4z"],
+ ["flame","M12 2c1 4 6 6 6 12a6 6 0 01-12 0c0-3 2-4 3-7 1 2 2 2 3-5z"],
+ ["diamond","M12 2l8 10-8 10-8-10z"],
+ ["cross","M10 3h4v7h7v4h-7v7h-4v-7H3v-4h7z"],
+ ["circle","M12 3a9 9 0 100 18 9 9 0 000-18z"]];
+const NS="http://www.w3.org/2000/svg";
+const ico=n=>{const s=document.createElementNS(NS,"svg"),p=document.createElementNS(NS,"path");s.setAttribute("viewBox","0 0 24 24");s.setAttribute("aria-hidden","true");
+  p.setAttribute("d",(ICONS[n]||ICONS[11])[1]);p.setAttribute("fill-rule","evenodd");s.append(p);return s};
+/* counter ids: "poison", "c"+opponent index (commander damage), "i"+icon index (one of each icon per player) */
+const isCmd=k=>k.id[0]==="c";
+const cname=k=>k.id==="poison"?"poison":isCmd(k)?"commander damage from "+pname(+k.id.slice(1)):(ICONS[+k.id.slice(1)]||ICONS[11])[0];
+const glyph=k=>k.id==="poison"?ico(1):isCmd(k)?dot(+k.id.slice(1)):ico(+k.id.slice(1));
+const KEY="lifecounter-v4", $=s=>document.querySelector(s), board=$("#board");
+const mk=(tag,cls,txt)=>{const e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e};
+let S, pending={}, cells=[];
+
+function newPlayer(i){return{name:"Player "+(i+1),color:i%COLORS.length,life:S?S.start:40,ctr:[],xn:0}}
+function load(){
+  try{const d=JSON.parse(localStorage.getItem(KEY)||localStorage.getItem("mtgcounter-v4"));if(d&&d.players&&LAYS[d.n]){S=d;if(!LAYS[S.n][S.lay])S.lay=0;return}}catch(e){}
+  S={n:4,lay:0,start:40,monarch:-1,log:[],players:[]};
+  for(let i=0;i<6;i++)S.players.push(newPlayer(i));
+}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function isOut(p){return p.life<=0||p.ctr.some(k=>(k.id==="poison"&&k.val>=10)||(isCmd(k)&&k.val>=21))}
+function fresh(){return S.log.length===0&&Object.keys(pending).length===0&&S.players.every(p=>p.life===S.start&&p.ctr.every(c=>!c.val))}
+
+function build(){
+  cells.forEach(c=>c.remove());cells=[];
+  S.players.forEach(p=>{p.ctr=p.ctr.filter(k=>!isCmd(k)||+k.id.slice(1)<S.n)});
+  if(S.monarch>=S.n)S.monarch=-1;
+  const used=new Set();for(let i=0;i<S.n;i++){const p=S.players[i];if(used.has(p.color))p.color=COLORS.findIndex((c,n)=>!used.has(n));used.add(p.color)}
+  const L=LAYS[S.n][S.lay]||LAYS[S.n][0];
+  board.style.gridTemplateColumns="repeat("+L.cols+",minmax(0,1fr))";
+  board.style.gridTemplateRows=L.rows.map(r=>"minmax(0,"+r+"fr)").join(" ");
+  for(let i=0;i<S.n;i++){
+    const g=L.cells[i],c=mk("div","cell");c.dataset.rot=g[4];
+    c.style.gridColumn=g[0]+" / span "+g[2];c.style.gridRow=g[1]+" / span "+g[3];
+    c.innerHTML='<div class="panel"><div class="top"><button class="grab pd" aria-label="Choose colour"></button><span class="tag"></span></div>'+
+      '<div class="mid"><div class="lifebox"><button class="hit dec" aria-label="Life minus one"></button><button class="hit inc" aria-label="Life plus one"></button>'+
+      '<div class="num"></div><div class="delta"></div></div>'+
+      '<div class="side"></div></div><button class="grab up" aria-label="Show counters"></button>'+
+      '<div class="scrim" hidden></div><div class="tray ctray" inert><button class="grab down" aria-label="Hide counters"></button><div class="chips"></div></div>'+
+      '<div class="tray ptray" inert><div class="pals"></div><button class="grab pu" aria-label="Hide colours"></button></div></div>';
+    c.querySelector(".pals").addEventListener("click",e=>{const b=e.target.closest(".pc");if(!b||b.disabled)return;
+      S.players[i].color=+b.dataset.n;refreshAll();save();c._pal(false)});
+    tray(c);
+    hold(c.querySelector(".dec"),()=>bump(i,"life",-1));hold(c.querySelector(".inc"),()=>bump(i,"life",1));
+    c.querySelector(".chips").addEventListener("click",e=>{
+      const b=e.target.closest(".chip");if(!b)return;const p=S.players[i],v=b.dataset.v;
+      if(v==="monarch"){S.monarch=S.monarch===i?-1:i;logAdd(pname(i)+(S.monarch===i?" became the monarch":" lost the monarchy"));refreshAll()}
+      else{const ix=p.ctr.findIndex(k=>k.id===v);
+        if(ix>=0){flushKey(i+":"+v);p.ctr.splice(ix,1)}else p.ctr.push({id:v,val:0});
+        refresh(i)}
+      save();c._tray(false);
+    });
+    board.insertBefore(c,$("#hub"));cells.push(c);
+  }
+  size();refreshAll();
+}
+function tray(c){
+  const up={0:[0,-1],180:[0,1],90:[1,0],"-90":[-1,0]}[c.dataset.rot],sets=[],scrim=c.querySelector(".scrim");
+  /* while a sheet is open the scrim covers the rest of the tile: a press there closes the sheet and changes nothing */
+  scrim.addEventListener("pointerdown",e=>{e.preventDefault();sets.forEach(f=>f(false))});
+  /* dir 1 = sheet opens by dragging towards the player's top (counters), -1 = towards their bottom (colours) */
+  const sheet=(sel,openSel,closeSel,dir)=>{const tr=c.querySelector(sel);let t;
+    const set=o=>{if(o)sets.forEach(f=>{if(f!==set)f(false)});tr.classList.toggle("open",o);tr.inert=!o;clearTimeout(t);if(o)t=setTimeout(()=>set(false),7000);
+      scrim.hidden=!c.querySelector(".tray.open")};
+    const drag=(el,d)=>{let s=null,moved=false;
+      el.addEventListener("pointerdown",e=>{s=[e.clientX,e.clientY];moved=false;try{el.setPointerCapture(e.pointerId)}catch(x){}});
+      el.addEventListener("pointermove",e=>{if(!s)return;const m=(e.clientX-s[0])*up[0]+(e.clientY-s[1])*up[1];
+        if(m*d>14){moved=true;s=null;set(d===dir)}});
+      ["pointerup","pointercancel"].forEach(n=>el.addEventListener(n,()=>{s=null}));
+      el.addEventListener("click",()=>{if(!moved)set(d===dir);moved=false})};
+    drag(c.querySelector(openSel),dir);drag(c.querySelector(closeSel),-dir);sets.push(set);return set};
+  c._tray=sheet(".ctray",".grab.up",".grab.down",1);c._pal=sheet(".ptray",".grab.pd",".grab.pu",-1);
+}
+function size(){
+  cells.forEach(c=>{const r=+c.dataset.rot,w=c.clientWidth,h=c.clientHeight,p=c.firstChild,side=Math.abs(r)===90;
+    p.style.width=(side?h:w)+"px";p.style.height=(side?w:h)+"px";p.style.transform="translate(-50%,-50%) rotate("+r+"deg)"});
+}
+new ResizeObserver(size).observe(board);
+
+const dot=k=>{const d=mk("span","dot");d.style.background=COLORS[S.players[k].color][0];return d};
+/* rebuilds the side stack and the tray for one player (only when counters are added, removed or renamed) */
+function refresh(i){
+  const p=S.players[i],c=cells[i];if(!c)return;
+  const side=c.querySelector(".side");side.textContent="";
+  p.ctr.forEach(k=>{
+    const row=mk("div","ctr"),m=mk("button","","−"),pl=mk("button","","+"),cv=mk("div","cv"),cn=mk("span","cn");
+    const nm=cname(k);m.setAttribute("aria-label",nm+" minus one");pl.setAttribute("aria-label",nm+" plus one");
+    cv.append(glyph(k),cn);row.append(m,cv,pl);
+    hold(m,()=>bump(i,k.id,-1));hold(pl,()=>bump(i,k.id,1));side.append(row)});
+  const ch=c.querySelector(".chips");ch.textContent="";
+  const has=id=>p.ctr.some(k=>k.id===id);
+  const chip=(v,node,on,aria,txt)=>{const b=mk("button","chip"+(on?" on":""));b.dataset.v=v;b.setAttribute("aria-label",aria);b.setAttribute("aria-pressed",on);
+    b.append(node);if(txt)b.append(txt);ch.append(b)};
+  chip("poison",ico(1),has("poison"),"Poison counter","Poison");
+  chip("monarch",ico(7),S.monarch===i,"Monarch","Monarch");
+  for(let k=0;k<S.n;k++)if(k!==i)chip("c"+k,dot(k),has("c"+k),"Commander damage from "+pname(k),"Cmdr");
+  const br=mk("div");br.style.cssText="flex-basis:100%;height:0";ch.append(br);
+  ICONS.forEach((ic,n)=>{if(n!==1&&n!==7)chip("i"+n,ico(n),has("i"+n),ic[0]+" counter")});
+  const pals=c.querySelector(".pals");pals.textContent="";
+  COLORS.forEach((col,n)=>{const taken=S.players.slice(0,S.n).some((q,j)=>j!==i&&q.color===n),b=mk("button","pc"+(p.color===n?" sel":""));
+    b.style.background=col[0];b.disabled=taken;b.dataset.n=n;b.setAttribute("aria-label",col[2]+(taken?", taken by another player":p.color===n?", selected":""));pals.append(b)});
+  update(i);
+}
+/* cheap: only numbers and state, safe to call while a button is held */
+function update(i){
+  const p=S.players[i],c=cells[i];if(!c)return;
+  const col=COLORS[p.color];c.style.setProperty("--pc",col[0]);c.style.setProperty("--ink",col[1]);
+  const out=isOut(p);c.classList.toggle("out",out);
+  c.querySelector(".tag").textContent=out?"Out":S.monarch===i?"Monarch":"";
+  c.querySelector(".num").textContent=p.life;
+  c.querySelectorAll(".cn").forEach((el,n)=>{if(p.ctr[n])el.textContent=p.ctr[n].val});
+}
+function refreshAll(){for(let i=0;i<S.n;i++)refresh(i)}
+
+function bump(i,id,d){
+  const p=S.players[i];let moved=d;
+  if(id==="life")p.life+=d;
+  else{const k=p.ctr.find(x=>x.id===id);if(!k)return;const o=k.val;k.val=Math.max(0,o+d);moved=k.val-o;if(isCmd(k))p.life-=moved}
+  if(!moved)return;
+  const key=i+":"+id;let q=pending[key];if(!q)q=pending[key]={i,id,delta:0};
+  q.delta+=moved;clearTimeout(q.t);q.t=setTimeout(()=>flushKey(key),1500);
+  if(id==="life"){const el=cells[i].querySelector(".delta");el.textContent=(q.delta>0?"+":"−")+Math.abs(q.delta);el.classList.toggle("on",q.delta!==0)}
+  update(i);save();
+}
+function flushKey(key){
+  const q=pending[key];if(!q)return;clearTimeout(q.t);delete pending[key];
+  const p=S.players[q.i];
+  if(q.id==="life"&&cells[q.i])cells[q.i].querySelector(".delta").classList.remove("on");
+  if(!q.delta)return;
+  const sg=(q.delta>0?"+":"−")+Math.abs(q.delta);
+  if(q.id==="life")return logAdd(pname(q.i)+" life "+sg+" → "+p.life);
+  const k=p.ctr.find(x=>x.id===q.id);if(!k)return;
+  logAdd(pname(q.i)+" "+cname(k)+" "+sg+" → "+k.val+(isCmd(k)?" (life "+p.life+")":""));
+}
+function flushAll(){Object.keys(pending).forEach(flushKey)}
+function logAdd(t){S.log.unshift({t:Date.now(),s:t});S.log.length=Math.min(S.log.length,80);save()}
+
+function hold(el,fn){
+  let t,iv;const stop=()=>{clearTimeout(t);clearInterval(iv)};
+  el.addEventListener("pointerdown",e=>{e.preventDefault();stop();fn();wake();t=setTimeout(()=>{iv=setInterval(fn,90)},450)});
+  ["pointerup","pointercancel","pointerleave"].forEach(n=>el.addEventListener(n,stop));
+  el.addEventListener("keydown",e=>{if(e.key==="Enter"||e.key===" "){e.preventDefault();fn()}});
+  el.addEventListener("contextmenu",e=>e.preventDefault());
+}
+
+let lock=null;
+async function wake(){if(lock||!navigator.wakeLock)return;try{lock=await navigator.wakeLock.request("screen");lock.addEventListener("release",()=>lock=null)}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")wake()});
+
+/* ---------- menu ---------- */
+const menu=$("#menu");let armed=false,openPal=-1;
+function seg(id,opts,cur,fn){const el=$(id);el.textContent="";opts.forEach(([v,l])=>{const b=mk("button","btn"+(v===cur?" on":""),l);
+  b.setAttribute("aria-pressed",v===cur);b.onclick=()=>{fn(v);drawMenu()};el.append(b)})}
+function drawMenu(){
+  seg("#segL",[20,30,40].map(n=>[n,n]),S.start,n=>{const f=fresh();S.start=n;if(f)reset();else{$("#lifeNote").hidden=false;save()}});
+  const lg=$("#log");lg.textContent="";
+  if(!S.log.length){const li=mk("li","","Nothing yet. Changes show up here, grouped per burst of taps.");li.style.color="var(--muted)";lg.append(li)}
+  S.log.forEach(e=>{const li=mk("li");li.append(mk("span","",e.s),mk("time","",new Date(e.t).toLocaleTimeString([],{hour:"numeric",minute:"2-digit"})));lg.append(li)});
+  armed=false;$("#newgame").textContent="New game";
+}
+function reset(){
+  Object.keys(pending).forEach(k=>{clearTimeout(pending[k].t);delete pending[k]});
+  S.players.forEach(p=>{p.life=S.start;p.ctr.forEach(c=>c.val=0)});S.monarch=-1;S.log=[];$("#lifeNote").hidden=true;
+  cells.forEach(c=>c.querySelector(".delta").classList.remove("on"));refreshAll();save();
+}
+$("#hub").onclick=()=>{flushAll();$("#result").textContent="";drawMenu();menu.hidden=false;wake()};
+$("#close").onclick=()=>menu.hidden=true;
+menu.addEventListener("click",e=>{if(e.target===menu)menu.hidden=true});
+document.addEventListener("keydown",e=>{if(e.key==="Escape")menu.hidden=true});
+$("#newgame").onclick=()=>{if(!armed){armed=true;$("#newgame").textContent="Tap again to wipe this game";return}reset();drawMenu();menu.hidden=true};
+$("#fs").onclick=()=>{try{const d=document;if(d.fullscreenElement)d.exitFullscreen();else d.documentElement.requestFullscreen().catch(()=>{$("#result").textContent="Full screen isn’t available here"})}catch(e){$("#result").textContent="Full screen isn’t available here"}};
+const rnd=n=>{const a=new Uint32Array(1);crypto.getRandomValues(a);return a[0]%n};
+document.querySelectorAll("[data-roll]").forEach(b=>b.onclick=()=>{const n=+b.dataset.roll;
+  $("#result").textContent=n===2?(rnd(2)?"Heads":"Tails"):"d"+n+" → "+(rnd(n)+1)});
+
+/* ---------- finger chooser: everyone holds a finger down, one is picked after 2.5s of nobody joining or leaving ---------- */
+const chooser=$("#chooser"),hint=$("#chHint");let pts=new Map(),chT,pickedAt=0,seq=0;
+function chClear(){clearTimeout(chT);pts.clear();chooser.querySelectorAll(".finger").forEach(e=>e.remove());pickedAt=0;hint.textContent="Everyone hold one finger on the screen"}
+function chArm(){
+  clearTimeout(chT);const go=pts.size>1;
+  pts.forEach(o=>{o.el.classList.remove("arm");void o.el.offsetWidth;if(go)o.el.classList.add("arm")});
+  hint.textContent=pts.size===0?"Everyone hold one finger on the screen":go?"Hold still…":"Waiting for more fingers";
+  if(go)chT=setTimeout(chPick,2500);
+}
+function chPick(){
+  const ids=[...pts.keys()],w=ids[rnd(ids.length)];
+  pts.forEach((o,id)=>{if(id===w){o.el.classList.remove("arm");o.el.classList.add("win")}else o.el.remove()});
+  pts.clear();pickedAt=Date.now();hint.textContent="This finger goes first";
+}
+const place=(el,e)=>{el.style.left=e.clientX+"px";el.style.top=e.clientY+"px"};
+chooser.addEventListener("pointerdown",e=>{
+  e.preventDefault();
+  if(pickedAt){if(Date.now()-pickedAt<1500)return;chClear()}
+  const el=mk("div","finger");el.style.setProperty("--fc",COLORS[seq++%COLORS.length][0]);place(el,e);chooser.append(el);
+  pts.set(e.pointerId,{el});try{chooser.setPointerCapture(e.pointerId)}catch(x){}
+  chArm();
+});
+chooser.addEventListener("pointermove",e=>{const o=pts.get(e.pointerId);if(o)place(o.el,e)});
+["pointerup","pointercancel"].forEach(n=>chooser.addEventListener(n,e=>{const o=pts.get(e.pointerId);if(o){o.el.remove();pts.delete(e.pointerId);chArm()}}));
+chooser.addEventListener("contextmenu",e=>e.preventDefault());
+$("#chClose").addEventListener("pointerdown",e=>e.stopPropagation());
+$("#chClose").onclick=()=>{chClear();chooser.hidden=true};
+$("#fingers").onclick=()=>{menu.hidden=true;chClear();chooser.hidden=false;wake()};
+
+/* ---------- start-up: player count, then seating ---------- */
+let inGame=false;
+function setup(step,n){
+  const su=$("#setup"),b=$("#suBody"),ft=$("#suFoot");b.textContent="";ft.textContent="";menu.hidden=true;su.hidden=false;
+  if(step===1){
+    $("#suH").textContent="How many players?";$("#suNote").textContent="";b.className="nums";
+    [2,3,4,5,6].forEach(k=>{const x=mk("button","btn",k);x.setAttribute("aria-label",k+" players");x.onclick=()=>setup(2,k);b.append(x)});
+    if(inGame||!fresh()){const r=mk("button","btn",inGame?"Back to game":"Continue last game");r.onclick=()=>{inGame=true;su.hidden=true};ft.append(r)}
+  }else{
+    if(LAYS[n].length===1){flushAll();S.n=n;S.lay=0;build();reset();inGame=true;su.hidden=true;return}
+    $("#suH").textContent="Where is everyone sitting?";$("#suNote").textContent="The dark bar on each tile is the edge that player sits at.";b.className="lays";
+    LAYS[n].forEach((L,ix)=>{
+      const x=mk("button","lay"),g=mk("div","mini");
+      g.style.gridTemplateColumns="repeat("+L.cols+",1fr)";g.style.gridTemplateRows=L.rows.map(r=>r+"fr").join(" ");
+      L.cells.forEach((c,j)=>{const t=mk("div","mt");t.style.gridColumn=c[0]+" / span "+c[2];t.style.gridRow=c[1]+" / span "+c[3];
+        t.style.background=COLORS[j][0];t.dataset.r=c[4];g.append(t)});
+      x.append(g,mk("span","",L.name));
+      x.onclick=()=>{flushAll();S.n=n;S.lay=ix;build();reset();inGame=true;su.hidden=true};b.append(x)});
+    const back=mk("button","btn","Back");back.onclick=()=>setup(1);ft.append(back);
+  }
+}
+$("#setupBtn").onclick=()=>{flushAll();setup(1)};
+
+/* "#resume" is set by the app when Android rebuilds the screen mid-game (for example unfolding a foldable) */
+load();build();if(location.hash==="#resume")inGame=true;else setup(1);
+</script>
+<script>if(location.protocol==="file:")document.getElementById("fs").hidden=true;</script>
+</body>
+</html>

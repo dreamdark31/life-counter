@@ -1,0 +1,13 @@
+# build output
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+# signing keys: never commit these
+*.jks
+*.keystore
+# Xcode
+xcuserdata/
+DerivedData/
+.DS_Store
